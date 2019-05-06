@@ -154,6 +154,55 @@ return [
 ];
 ```
 
+### Module Documentation
+
+Some information needed in the Swagger documentation cannot be retreieved from the standard API documentation module
+but is taken from the module's `documentation.config.php` file instead. Extend these files with the following keys
+to complete the Swagger JSON output:
+
+```php
+<?php
+return [
+    // these fields are directly merged into the Swagger JSON output and can provide/override
+    // any property that is supported by the Swagger 2.0 Specification. See https://swagger.io/docs/specification/2-0/basic-structure/
+    'ZF\\Apigility\\Documentation\\Swagger\\Api' => [
+        'info' => [
+            'title' => 'My API',
+            'description' => '',
+        ],
+        'securityDefinitions' => [
+            'basic-auth' => [
+                'type' => 'basic',
+            ],
+            'application-http' => [
+                'type' => 'apiKey',
+                'in' => 'header',
+                'name' => 'Authorization',
+            ],
+        ],
+    ],
+    // Swagger properties merged into each Service definition
+    'Api\\V1\\Rest\\Some\\Controller' => [
+        // reference to a security definition and specify the requird scope (for oauth2)
+        'security' => 'basic-auth',
+        'scope' => [],
+    ],
+    'Api\\V1\\Rest\\Other\\Controller' => [
+        'security' => 'application-http',
+        'scope' => [],
+        'collection' => [
+            // describe supported query parmeters extracted from the 'collection_query_whitelist' config
+            'query' => [
+                'q' => [
+                    'type' => 'string',
+                    'description' => 'Search term for filtering',
+                ],
+            ],
+        ],
+    ],
+];
+```
+
 ## ZF Events
 
 ### Listeners

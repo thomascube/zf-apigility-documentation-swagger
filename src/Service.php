@@ -16,6 +16,90 @@ class Service extends BaseService
 {
     const DEFAULT_TYPE = 'string';
     const ARRAY_TYPE = 'array';
+    const DATE_TYPE = 'date-time';
+    const NUMBER_TYPE = 'number';
+    const NUMBER_TYPES = ['integer', 'float'];
+
+    static protected $HalJsonLinks = [
+        'id' => 'HalJsonLinks',
+        'type' => 'object',
+        'properties' => [
+            'self' => [
+                'type' => 'object',
+                'description' => 'Link relation to the current page of the collection',
+                'properties' => [
+                    'href' => [
+                        'type' => 'string',
+                        'description' => '',
+                    ],
+                ],
+            ],
+            'first' => [
+                'type' => 'object',
+                'description' => 'Link relation to the first page of the collection',
+                'properties' => [
+                    'href' => [
+                        'type' => 'string',
+                        'description' => '',
+                    ],
+                ],
+            ],
+            'last' => [
+                'type' => 'object',
+                'description' => 'Link relation to the last page of the collection',
+                'properties' => [
+                    'href' => [
+                        'type' => 'string',
+                        'description' => '',
+                    ],
+                ],
+            ],
+            'next' => [
+                'type' => 'object',
+                'description' => 'Link relation to the next page of the collection',
+                'properties' => [
+                    'href' => [
+                        'type' => 'string',
+                        'description' => '',
+                    ],
+                ],
+            ],
+            'prev' => [
+                'type' => 'object',
+                'description' => 'Link relation to the previous page of the collection',
+                'properties' => [
+                    'href' => [
+                        'type' => 'string',
+                        'description' => '',
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    static protected $haljsoncounts = [
+        'total_items' => [
+            'type' => 'number',
+            'format' => 'integer',
+            'description' => 'Number of records found',
+        ],
+        'page_count' => [
+            'type' => 'number',
+            'format' => 'integer',
+            'description' => 'Number of pages in result set',
+        ],
+        'page_size' => [
+            'type' => 'number',
+            'format' => 'integer',
+            'description' => 'Number of records listed per page',
+        ],
+        'page' => [
+            'type' => 'number',
+            'format' => 'integer',
+            'description' => 'Current page',
+            'default' => 1,
+        ],
+    ];
 
     /**
      * @var BaseService
@@ -25,7 +109,12 @@ class Service extends BaseService
     /**
      * @var ModelGenerator
      */
-    private $modelGenerator;
+    protected $modelGenerator;
+
+    /**
+     * @var array
+     */
+    protected $halJsonCollections = [];
 
     /**
      * @param BaseService $service
@@ -51,7 +140,7 @@ class Service extends BaseService
     /**
      * @return array
      */
-    private function getTags()
+    protected function getTags()
     {
         return [
             $this->cleanEmptyValues([
@@ -64,7 +153,7 @@ class Service extends BaseService
     /**
      * @return array
      */
-    private function getPaths()
+    protected function getPaths()
     {
         $route = $this->getRouteWithReplacements();
         if ($this->isRestService()) {
@@ -76,7 +165,7 @@ class Service extends BaseService
     /**
      * @return string
      */
-    private function getRouteWithReplacements()
+    protected function getRouteWithReplacements()
     {
         // routes and parameter mangling ([:foo] will become {foo}
         return preg_replace('#\[?\/:(\w+)\]?#', '/{$1}', $this->service->route);
@@ -85,7 +174,7 @@ class Service extends BaseService
     /**
      * @return bool
      */
-    private function isRestService()
+    protected function isRestService()
     {
         return ($this->service->routeIdentifierName);
     }
@@ -94,7 +183,7 @@ class Service extends BaseService
      * @param string $route
      * @return array
      */
-    private function getRestPaths($route)
+    protected function getRestPaths($route)
     {
         $entityOperations = $this->getEntityOperationsData($route);
         $collectionOperations = $this->getCollectionOperationsData($route);
@@ -114,7 +203,7 @@ class Service extends BaseService
      * @param string $route
      * @return array
      */
-    private function getOtherPaths($route)
+    protected function getOtherPaths($route)
     {
         $operations = $this->getOtherOperationsData($route);
         return [$route => $operations];
@@ -124,30 +213,31 @@ class Service extends BaseService
      * @param string $route
      * @return array
      */
-    private function getEntityOperationsData($route)
+    protected function getEntityOperationsData($route)
     {
         $urlParameters = $this->getURLParametersRequired($route);
         $operations = $this->service->getEntityOperations();
-        return $this->getOperationsData($operations, $urlParameters);
+        return $this->getOperationsData($operations, $urlParameters, false);
     }
 
     /**
      * @param string $route
      * @return array
      */
-    private function getCollectionOperationsData($route)
+    protected function getCollectionOperationsData($route)
     {
         $urlParameters = $this->getURLParametersNotRequired($route);
+        $urlParameters += $this->getCollectionQueryParameters();
         unset($urlParameters[$this->service->routeIdentifierName]);
         $operations = $this->service->operations;
-        return $this->getOperationsData($operations, $urlParameters);
+        return $this->getOperationsData($operations, $urlParameters, true);
     }
 
     /**
      * @param string $route
      * @return array
      */
-    private function getOtherOperationsData($route)
+    protected function getOtherOperationsData($route)
     {
         $urlParameters = $this->getURLParametersRequired($route);
         $operations = $this->service->operations;
@@ -157,9 +247,10 @@ class Service extends BaseService
     /**
      * @param string $route
      * @param array $urlParameters
+     * @param boolean $isCollection
      * @return array
      */
-    private function getOperationsData($operations, $urlParameters)
+    protected function getOperationsData($operations, $urlParameters, $isCollection = null)
     {
         $operationsData = [];
         foreach ($operations as $operation) {
@@ -168,7 +259,7 @@ class Service extends BaseService
             if ($this->isMethodPostPutOrPatch($method)) {
                 $parameters[] = $this->getPostPatchPutBodyParameter();
             }
-            $pathOperation = $this->getPathOperation($operation, $parameters);
+            $pathOperation = $this->getPathOperation($operation, $parameters, $isCollection);
             $operationsData[$method] = $pathOperation;
         }
         return $operationsData;
@@ -178,7 +269,7 @@ class Service extends BaseService
      * @param string $route
      * @return array
      */
-    private function getURLParametersRequired($route)
+    protected function getURLParametersRequired($route)
     {
         return $this->getURLParameters($route, true);
     }
@@ -187,7 +278,7 @@ class Service extends BaseService
      * @param string $route
      * @return array
      */
-    private function getURLParametersNotRequired($route)
+    protected function getURLParametersNotRequired($route)
     {
         return $this->getURLParameters($route, false);
     }
@@ -197,7 +288,7 @@ class Service extends BaseService
      * @param bool $required
      * @return array
      */
-    private function getURLParameters($route, $required)
+    protected function getURLParameters($route, $required)
     {
         // find all parameters in Swagger naming format
         preg_match_all('#{([\w\d_-]+)}#', $route, $parameterMatches);
@@ -210,24 +301,41 @@ class Service extends BaseService
                 'description' => 'URL parameter ' . $paramSegmentName,
                 'type' => 'string',
                 'required' => $required,
-                'minimum' => 0,
-                'maximum' => 1
+                // 'minimum' => 0,
+                // 'maximum' => 1
             ];
         }
         return $templateParameters;
     }
 
+    protected function getCollectionQueryParameters()
+    {
+        $queryParameters = [];
+        foreach ($this->service->getFields('query') as $field) {
+            $paramName = $field->getName();
+            $queryParameters[$paramName] = [
+                'in' => 'query',
+                'name' => $paramName,
+                'description' => $field->getDescription() ?? 'Query parameter ' . $paramName,
+                'type' => $field->getFieldType() ?? ($field->getType() ?? 'string'),
+                'required' => $field->isRequired(),
+            ];
+        }
+
+        return $queryParameters;
+    }
+
     /**
      * @return array
      */
-    private function getPostPatchPutBodyParameter()
+    protected function getPostPatchPutBodyParameter()
     {
         return [
             'in' => 'body',
             'name' => 'body',
             'required' => true,
             'schema' => [
-                '$ref' => '#/definitions/' . $this->service->getName()
+                '$ref' => '#/definitions/' . $this->service->getName() . 'Input',
             ]
         ];
     }
@@ -236,7 +344,7 @@ class Service extends BaseService
      * @param string $method
      * @return bool
      */
-    private function isMethodPostPutOrPatch($method)
+    protected function isMethodPostPutOrPatch($method)
     {
         return in_array(strtolower($method), ['post', 'put', 'patch']);
     }
@@ -245,7 +353,7 @@ class Service extends BaseService
      * @param Operation $operation
      * @return string
      */
-    private function getMethodFromOperation(Operation $operation)
+    protected function getMethodFromOperation(Operation $operation)
     {
         return strtolower($operation->getHttpMethod());
     }
@@ -253,24 +361,27 @@ class Service extends BaseService
     /**
      * @param Operation $operation
      * @param array $parameters
+     * @param boolean $isCollection
      * @return array
      */
-    private function getPathOperation(Operation $operation, $parameters)
+    protected function getPathOperation(Operation $operation, $parameters, $isCollection = null)
     {
         return $this->cleanEmptyValues([
             'tags' => [$this->service->getName()],
             'description' => $operation->getDescription(),
             'parameters' => $parameters,
             'produces' => $this->service->getRequestAcceptTypes(),
-            'responses' => $this->getResponsesFromOperation($operation),
+            'responses' => $this->getResponsesFromOperation($operation, $isCollection),
+            'security' => $operation->requiresAuthorization() ? $this->getSecurityData() : null,
         ]);
     }
 
     /**
      * @param Operation $operation
+     * @param boolean $isCollection
      * @return array
      */
-    private function getResponsesFromOperation(Operation $operation)
+    protected function getResponsesFromOperation(Operation $operation, $isCollection = null)
     {
         $responses = [];
         $responseStatusCodes = $operation->getResponseStatusCodes();
@@ -278,7 +389,7 @@ class Service extends BaseService
             $code = intval($responseStatusCode['code']);
             $responses[$code] = $this->cleanEmptyValues([
                 'description' => $responseStatusCode['message'],
-                'schema' => $this->getResponseSchema($operation, $code),
+                'schema' => $this->getResponseSchema($operation, $code, $isCollection),
             ]);
         }
         return $responses;
@@ -287,35 +398,128 @@ class Service extends BaseService
     /**
      * @param Operation $operation
      * @param int $code
+     * @param boolean $isCollection
      * @return null|array If the return code is neither 200 or 201, returns null.
      *     Otherwise, it retrieves the response description, passes it to the
      *     model generator, and uses the returned value.
      */
-    private function getResponseSchema(Operation $operation, $code)
+    protected function getResponseSchema(Operation $operation, $code, $isCollection = null)
     {
         if ($code === 200 || $code === 201) {
-            return $this->modelGenerator->generate($operation->getResponseDescription());
+            $schema = $this->modelGenerator->generate($operation->getResponseDescription());
+
+            if (!$schema) {
+                // refer to entity difinition if available
+                $serviceName = $this->service->getName();
+                $definitionName = $serviceName . 'Entity';
+                $entityDefinitions = $this->getEntityDefinitions();
+                if (isset($entityDefinitions[$definitionName])) {
+                    $schema = [
+                        '$ref' => '#/definitions/' . $definitionName,
+                    ];
+                }
+
+                // define HAL+JSON collection model for this collection type
+                if (isset($schema['$ref']) && $isCollection && $code === 200) {
+                    // skip if hal+json is not listed as accept type
+                    if (!in_array('application/hal+json', $this->service->getRequestAcceptTypes())) {
+                        return null;
+                    }
+
+                    $docsArray = $this->service->getDocs();
+                    $halJsonType = $serviceName . 'HalCollection';
+
+                    if (isset($docsArray['zf-rest']['collection_name'])) {
+                        $collectionName = $docsArray['zf-rest']['collection_name'];
+                    } else {
+                        $collectionName = strtolower(preg_replace('/([a-z])([A-Z])/', '$1_$2', $serviceName));
+                    }
+
+                    $this->halJsonCollections[$halJsonType] = [
+                        'id' => $halJsonType,
+                        'description' => 'HAL+JSON formatted collection of records. The Hypertext Application Language (HAL) is documented at http://stateless.co/hal_specification.html',
+                        'properties' => [
+                            '_links' => [
+                                'type' => 'object',
+                                'schema' => [
+                                    '$ref' => '#/definitions/HalJsonLinks',
+                                ]
+                            ],
+                            '_embedded' => [
+                                'type' => 'object',
+                                'description' => 'HAL+JSON formatted collection of models',
+                                'properties' => [
+                                    $collectionName => [
+                                        'type' => 'array',
+                                        'items' => [
+                                            '$ref' => '#/definitions/' . $definitionName,
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ] + self::$haljsoncounts,
+                    ];
+                    $schema = [
+                        '$ref' => '#/definitions/' . $halJsonType,
+                    ];
+                }
+            }
+
+            return $schema;
         }
     }
 
     /**
      * @return array
      */
-    private function getDefinitions()
+    protected function getDefinitions()
+    {
+        return array_merge($this->getEntityDefinitions(), $this->getInputDefinitions(), $this->getHalJsonDefinitions());
+    }
+
+    /**
+     * @return array
+     */
+    protected function getEntityDefinitions()
+    {
+        $fields = $this->getEntityFields();
+        if (empty($fields)) {
+            return [];
+        }
+
+        $model = $this->getModelFromFields($fields);
+        $definitionName = $this->service->getName() . 'Entity';
+        return [$definitionName => $model];
+    }
+
+    /**
+     * @return array
+     */
+    protected function getInputDefinitions()
     {
         if (! $this->serviceContainsPostPutOrPatchMethod()) {
             return [];
         }
-        $modelFromFields = $this->getModelFromFields();
+        $modelFromFields = $this->getModelFromFields($this->getInputFilterFields());
         $modelFromPostDescription = $this->getModelFromFirstPostDescription();
         $model = array_replace_recursive($modelFromFields, $modelFromPostDescription);
-        return [$this->service->getName() => $model];
+        $definitionName = $this->service->getName() . 'Input';
+        return [$definitionName => $model];
+    }
+
+    protected function getHalJsonDefinitions()
+    {
+        if (!empty($this->halJsonCollections)) {
+            return $this->halJsonCollections + ['HalJsonLinks' => self::$HalJsonLinks];
+        }
+
+        return [];
     }
 
     /**
      * @return bool
      */
-    private function serviceContainsPostPutOrPatchMethod()
+    protected function serviceContainsPostPutOrPatchMethod()
     {
         foreach ($this->getAllOperations() as $operation) {
             $method = $this->getMethodFromOperation($operation);
@@ -327,13 +531,14 @@ class Service extends BaseService
     }
 
     /**
+     * @param array
      * @return array
      */
-    private function getModelFromFields()
+    protected function getModelFromFields(array $fields)
     {
         $required = $properties = [];
 
-        foreach ($this->getFieldsForDefinitions() as $field) {
+        foreach ($fields as $field) {
             if (! $field instanceof Field) {
                 continue;
             }
@@ -354,7 +559,7 @@ class Service extends BaseService
     /**
      * @return array
      */
-    private function getModelFromFirstPostDescription()
+    protected function getModelFromFirstPostDescription()
     {
         $firstPostDescription = $this->getFirstPostRequestDescription();
         if (! $firstPostDescription) {
@@ -368,7 +573,7 @@ class Service extends BaseService
      *     otherwise, returns the request description from the first POST
      *     operation discovered.
      */
-    private function getFirstPostRequestDescription()
+    protected function getFirstPostRequestDescription()
     {
         foreach ($this->getAllOperations() as $operation) {
             $method = $this->getMethodFromOperation($operation);
@@ -382,27 +587,45 @@ class Service extends BaseService
     /**
      * @return null|array
      */
-    private function getFieldsForDefinitions()
+    protected function getInputFilterFields()
     {
         // Fields are part of the default input filter when present.
         $fields = $this->service->fields;
         if (isset($fields['input_filter'])) {
-            $fields = $fields['input_filter'];
+            return $fields['input_filter'];
         }
-        return $fields;
+        return [];
+    }
+
+    /**
+     * @return null|array
+     */
+    protected function getEntityFields()
+    {
+        $fields = $this->service->fields;
+        if (isset($fields['entity'])) {
+            return $fields['entity'];
+        }
+        return [];
     }
 
     /**
      * @param Field $field
      * @return array
      */
-    private function getFieldProperties(Field $field)
+    protected function getFieldProperties(Field $field)
     {
         $type = $this->getFieldType($field);
         $properties = [];
         $properties['type'] = $type;
         if ($type === self::ARRAY_TYPE) {
-            $properties['items'] = ['type' => self::DEFAULT_TYPE];
+            $properties['items'] = ['type' => $field->getType() ?: self::DEFAULT_TYPE];
+        } else if ($type === self::DATE_TYPE) {
+            $properties['type'] = self::DEFAULT_TYPE;
+            $properties['format'] = $type;
+        } else if (in_array($type, self::NUMBER_TYPES)) {
+            $properties['type'] = self::NUMBER_TYPE;
+            $properties['format'] = $type;
         }
         $properties['description'] = $field->getDescription();
         return $this->cleanEmptyValues($properties);
@@ -412,7 +635,7 @@ class Service extends BaseService
      * @param Field $field
      * @return string
      */
-    private function getFieldType(Field $field)
+    protected function getFieldType(Field $field)
     {
         return method_exists($field, 'getFieldType') && ! empty($field->getFieldType())
             ? $field->getFieldType()
@@ -422,7 +645,7 @@ class Service extends BaseService
     /**
      * @return array
      */
-    private function getAllOperations()
+    protected function getAllOperations()
     {
         $entityOperations = $this->service->getEntityOperations();
         if (is_array($entityOperations)) {
@@ -435,10 +658,25 @@ class Service extends BaseService
      * @param array $data
      * @return array $data omitting empty values
      */
-    private function cleanEmptyValues(array $data)
+    protected function cleanEmptyValues(array $data)
     {
         return array_filter($data, function ($item) {
             return ! empty($item);
         });
+    }
+
+    /**
+     * @return string|null
+     */
+    protected function getSecurityData()
+    {
+        $docsArray = $this->service->getDocs();
+        if (isset($docsArray['security'])) {
+            $key = $docsArray['security'];
+            $scopes = $docsArray['scope'] ?? [];
+            return [$key => $scopes];
+        }
+
+        return null;
     }
 }
