@@ -21,7 +21,6 @@ class Service extends BaseService
     const NUMBER_TYPES = ['integer', 'float'];
 
     static protected $HalJsonLinks = [
-        'id' => 'HalJsonLinks',
         'type' => 'object',
         'properties' => [
             'self' => [
@@ -317,7 +316,7 @@ class Service extends BaseService
                 'in' => 'query',
                 'name' => $paramName,
                 'description' => $field->getDescription() ?? 'Query parameter ' . $paramName,
-                'type' => $field->getFieldType() ?? ($field->getType() ?? 'string'),
+                'type' => $field->getFieldType() ?: ($field->getType() ?: 'string'),
                 'required' => $field->isRequired(),
             ];
         }
@@ -436,7 +435,6 @@ class Service extends BaseService
                     }
 
                     $this->halJsonCollections[$halJsonType] = [
-                        'id' => $halJsonType,
                         'description' => 'HAL+JSON formatted collection of records. The Hypertext Application Language (HAL) is documented at http://stateless.co/hal_specification.html',
                         'properties' => [
                             '_links' => [
@@ -551,8 +549,8 @@ class Service extends BaseService
 
         return $this->cleanEmptyValues([
             'type' => 'object',
-            'properties' => $properties,
-            'required' => $required,
+            'properties' => !empty($properties) ? $properties : null,
+            'required' => !empty($required) ? $required : null,
         ]);
     }
 
@@ -672,9 +670,9 @@ class Service extends BaseService
     {
         $docsArray = $this->service->getDocs();
         if (isset($docsArray['security'])) {
-            $key = $docsArray['security'];
-            $scopes = $docsArray['scope'] ?? [];
-            return [$key => $scopes];
+            $scopes = (array)($docsArray['scope'] ?? []);
+            $values = is_array($docsArray['security']) ? $docsArray['security'] : [$docsArray['security']];
+            return array_map(function($key) use ($scopes) { return [$key => $scopes]; }, $values);
         }
 
         return null;
