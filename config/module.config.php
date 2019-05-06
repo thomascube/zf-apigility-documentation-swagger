@@ -32,6 +32,20 @@ return [
                                 ],
                                 'may_terminate' => true,
                             ],
+                            'json' => [
+                                'type' => 'segment',
+                                'options' => [
+                                    'route' => '/:api[-v:version].json',
+                                    'constraints' => [
+                                        'api' => '[a-zA-Z][a-zA-Z0-9_.%]+',
+                                    ],
+                                    'defaults' => [
+                                        'controller' => 'SwaggerJsonController',
+                                        'action' => 'show',
+                                    ],
+                                ],
+                                'may_terminate' => true,
+                            ],
                         ],
                     ],
                 ],
@@ -48,6 +62,7 @@ return [
     'controllers' => [
         'factories' => [
             SwaggerUi::class => SwaggerUiControllerFactory::class,
+            'SwaggerJsonController' => \ZF\Apigility\Documentation\ControllerFactory::class,
         ],
     ],
 
@@ -66,15 +81,26 @@ return [
     ],
 
     'zf-content-negotiation' => [
+        'controllers' => [
+            'SwaggerJsonController' => 'SwaggerJson',
+        ],
         'accept_whitelist' => [
             'ZF\Apigility\Documentation\Controller' => [
                 0 => 'application/vnd.swagger+json',
+            ],
+            'SwaggerJsonController' => [
+                0 => '*/*',
             ],
         ],
         'selectors' => [
             'Documentation' => [
                 ViewModel::class => [
                     'application/vnd.swagger+json',
+                ],
+            ],
+            'SwaggerJson' => [
+                ViewModel::class => [
+                    '*/*',
                 ],
             ],
         ],
