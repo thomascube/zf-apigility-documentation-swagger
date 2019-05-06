@@ -79,9 +79,7 @@ class Service extends BaseService
     private function getRouteWithReplacements()
     {
         // routes and parameter mangling ([:foo] will become {foo}
-        $search = ['[', ']', '{/', '{:'];
-        $replace = ['{', '}', '/{', '{'];
-        return str_replace($search, $replace, $this->service->route);
+        return preg_replace('#\[?\/:(\w+)\]?#', '/{$1}', $this->service->route);
     }
 
     /**
