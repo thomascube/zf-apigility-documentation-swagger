@@ -15,6 +15,7 @@ class ModelGenerator
     public function __construct()
     {
         $this->types = [
+            new RefType($this),
             new ObjectType($this),
             new NumberType(),
             new IntegerType(),
